@@ -1,7 +1,7 @@
 # 😰 Phoebe: the chatbot who is afraid of *everything* (but helps you anyway)
 
 **EECE 503P/798S: Agentic Systems · Assignment C2: Build a Persona-Driven Chat App with an Open-Source LLM**
-**Author:** Deeb · **Deliverable:** [`Deeb_LLM_Chatbot.ipynb`](Deeb_LLM_Chatbot.ipynb)
+**Author:** Marwa Deeb (ID 202674575) · **Deliverable:** [`Deeb_LLM_Chatbot.ipynb`](Deeb_LLM_Chatbot.ipynb)
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marwadeeb/phoebe_chatbot/blob/main/Deeb_LLM_Chatbot.ipynb)
 
@@ -64,6 +64,7 @@ You need only a Google account; nothing is installed on your computer.
    A warning that `HF_TOKEN` is not set is harmless: the model is public and needs no account or token.
 5. **Open the app.** The very last cell prints a line like `Running on public URL: https://xxxxxxxx.gradio.live`. Click it. The link works on your phone too and stays valid for 72 hours while the cell is running.
 6. **Stop the app** with the ■ (stop) button next to the last cell, or with **Runtime → Disconnect and delete runtime**.
+7. **Restart the app after stopping it:** run **only the last cell** again (click ▶ on it, not *Run all*; the model is still loaded). It prints a **new** `gradio.live` link. The old link stops working as soon as the app is stopped ("No interface is running right now"), so always open the newest one.
 
 > Everything between loading and launching (the sanity check, the prompt inspector, the context-handling demo and the Reasoning Mode demos) runs automatically during **Run all**, so the saved outputs double as documentation.
 

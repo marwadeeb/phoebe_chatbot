@@ -4,7 +4,8 @@
 # %% [markdown]
 # # 😰 Phoebe: the chatbot who is afraid of *everything* (but helps you anyway)
 #
-# **EECE 503P/798S: Agentic Systems · Assignment C2 · Deeb**
+# **EECE 503P/798S: Agentic Systems · Assignment C2**
+# **Author:** Marwa Deeb · **ID:** 202674575
 #
 # Phoebe is a persona-driven chat app built on the open-source **Qwen2.5-7B-Instruct** model.
 # She is terrified of whatever you ask about (spiders, soup, numbers, Tuesdays...), yet she always
@@ -870,9 +871,14 @@ with gr.Blocks(theme=THEME, css=CSS, title="Phoebe: afraid of everything") as de
 # ## §12 · Launch
 # In Colab this prints a public `https://….gradio.live` link (valid for 72 hours) that also works on
 # a phone. The cell keeps running while the app is up; stop it with the ■ button.
+#
+# **Stopped it by accident?** Just run this cell again; there is no need to re-run the rest of the
+# notebook, because the model stays loaded. Each launch creates a **new** link, and the old one stops
+# working, so open the new link printed below.
 
 # %%
 import os
 
 if os.environ.get("PHOEBE_SKIP_UI") != "1":  # set to 1 to execute the notebook headlessly
+    demo.close()  # shut down any previous launch (e.g. after pressing ■) so the new one starts cleanly
     demo.queue(default_concurrency_limit=1).launch(share=IN_COLAB, debug=IN_COLAB)
