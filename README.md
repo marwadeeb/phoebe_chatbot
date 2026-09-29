@@ -2,6 +2,7 @@
 
 **EECE 503P/798S: Agentic Systems · Assignment C2: Build a Persona-Driven Chat App with an Open-Source LLM**
 **Author:** Marwa Deeb (ID 202674575) · **Deliverable:** [`Deeb_LLM_Chatbot.ipynb`](Deeb_LLM_Chatbot.ipynb)
+**GitHub repository:** <https://github.com/marwadeeb/phoebe_chatbot> (notebook, README, screenshot and local-setup files)
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marwadeeb/phoebe_chatbot/blob/main/Deeb_LLM_Chatbot.ipynb)
 
@@ -11,7 +12,7 @@ cartoonish panic, and then **pushes through her fear to give you a correct, genu
 A live *fear meter* shows how scared she is, and an optional **Reasoning Mode** shows her nervous
 step-by-step "overthinking" in a separate panel before her final answer.
 
-![Phoebe answering a word problem in Reasoning Mode: the fear scan and the "panic journal" reasoning trace appear inside her reply, with the fear meter and memory gauge on the right](docs/screenshot.png)
+![Phoebe answering a word problem in Reasoning Mode: the fear scan and the "panic journal" reasoning trace appear inside her reply, with the fear meter and memory gauge on the right](https://raw.githubusercontent.com/marwadeeb/phoebe_chatbot/main/docs/screenshot.png)
 
 ## TL;DR
 
