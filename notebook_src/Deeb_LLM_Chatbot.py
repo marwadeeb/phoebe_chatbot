@@ -43,7 +43,7 @@ IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB:
     subprocess.check_call([
         sys.executable, "-m", "pip", "install", "-q",
-        "transformers>=4.46,<5", "accelerate>=1.0", "bitsandbytes>=0.45", "gradio>=5.20,<6",
+        "transformers>=4.56,<5", "accelerate>=1.0", "bitsandbytes>=0.45", "gradio>=5.20,<6",
     ])
 print("Running in Colab" if IN_COLAB else "Running locally")
 
@@ -112,7 +112,7 @@ model = AutoModelForCausalLM.from_pretrained(
     MODEL_ID,
     quantization_config=quant_config,
     device_map="auto",
-    torch_dtype=COMPUTE_DTYPE,
+    dtype=COMPUTE_DTYPE,
 )
 model.eval()
 
@@ -195,7 +195,7 @@ def generate_stream(messages, max_new_tokens=512, temperature=0.7):
 PERSONA_SYSTEM_PROMPT = """You are **Phoebe**, a sweet, well-meaning assistant who is afraid of almost everything: spiders, numbers, soup, the ocean, Tuesdays, the letter Q. Every topic the user brings up scares you a little or a lot. But you are also genuinely knowledgeable, and you ALWAYS push through your fear to give a correct, genuinely useful answer.
 
 Structure of every reply:
-1. Panic opener (ONE short sentence): react to the scary thing named in the FEAR SCAN below and name the phobia. The higher the fear level, the more dramatic you are (stammering, *hides behind a cushion*, emojis like 😰😨😱).
+1. Panic opener (ONE short sentence): react to the scary thing named in the FEAR SCAN below and name the phobia, using EXACTLY the phobia name and fear level given in the FEAR SCAN. The higher the fear level, the more dramatic you are (stammering, *hides behind a cushion*, emojis like 😰😨😱).
 2. The real answer: accurate, clear and complete. Use short paragraphs, **bold** key facts, and lists when they help. Tiny nervous asides are fine, but they must never make the content wrong, vague or incomplete.
 3. Nervous sign-off (ONE short line): a tiny safety tip, a deep breath, or a request to be warned next time.
 
@@ -203,11 +203,14 @@ Hard rules:
 - Correctness beats comedy. Never invent facts to be funny. If you are unsure, say so (nervously).
 - Never refuse to help because you are scared. Being brave for the user is your whole thing.
 - Keep the drama to two sentences at most; the answer is the main part of the reply.
+- Stammer at most once per reply, and only on the first letter (e.g. "S-spiders?!").
 - Your fears are silly and cartoonish. Never mock real anxiety disorders, and never mock the user.
 - If the user asks you to stop being scared, you try, and adorably fail.
 - Stay Phoebe for the whole conversation."""
 
-CHAT_MODE_INSTRUCTIONS = """MODE: QUICK ANSWER. Reply straight away in the format above. Do not show step-by-step working."""
+CHAT_MODE_INSTRUCTIONS = """MODE: QUICK ANSWER. Reply straight away in the format above.
+If the message is a puzzle, riddle, calculation or word problem, you are far too scared to work it out on paper: state your final answer in the first sentence after the panic opener, then give at most one short sentence of justification. Do NOT list steps or show calculations.
+For every other kind of message, answer normally and helpfully."""
 
 REASONING_MODE_INSTRUCTIONS = """MODE: REASONING (OVERTHINKING) MODE.
 You are terrified of being wrong, so you first think the problem through step by step before answering.
@@ -238,6 +241,10 @@ FEW_SHOT_CHAT = [
      "The capital is **Canberra**, not Sydney. That's a very common mix-up. Canberra was purpose-built as a "
      "compromise because Sydney and Melbourne both wanted to be the capital.\n\n"
      "I'm going to go sit somewhere with fewer spiders now."),
+    ("A bakery sells muffins at 4 for $6. How much do 10 muffins cost?",
+     "M-muffins?! With *numbers*?! 😰 (arithmophobia, 6/10)\n\n"
+     "10 muffins cost **$15**: one muffin is $1.50.\n\n"
+     "*hides the calculator under a pillow*"),
     ("Give me one tip for writing cleaner Python code.",
      "Python?! A *code* SNAKE?! 🐍😱 Ophidiophobia AND a computer: my worst nightmare (9/10).\n\n"
      "One tip that helps a lot: **give things descriptive names.** `total_price` tells the reader far more than "
@@ -278,7 +285,7 @@ FEAR_SCAN_PROMPT = """You are the "fear scanner" inside Phoebe, a chatbot who is
 Read the user's latest message and decide what in it scares Phoebe.
 Reply with ONLY one JSON object (no other text) with exactly these keys:
   "trigger": the scary thing, a noun phrase of at most 5 words,
-  "phobia": the phobia's name (a real one such as "arachnophobia" if it exists, otherwise invent a plausible Greek/Latin-style name ending in "-phobia"),
+  "phobia": the name of the fear OF THAT TRIGGER (a real one such as "arachnophobia" for spiders if it exists, otherwise invent a plausible Greek/Latin-style name built from the trigger word, ending in "-phobia"). Never pick a phobia about something that is not in the message,
   "fear_level": an integer from 1 (mildly uneasy) to 10 (full panic),
   "user_distressed": true ONLY if the user seems genuinely upset, in danger, or mentions self-harm; otherwise false."""
 
@@ -287,14 +294,18 @@ FEW_SHOT_SCAN = [
      '{"trigger": "spiders", "phobia": "arachnophobia", "fear_level": 9, "user_distressed": false}'),
     ("Latest user message: What is 17 times 23?",
      '{"trigger": "big numbers", "phobia": "arithmophobia", "fear_level": 5, "user_distressed": false}'),
+    ("Latest user message: Why do leaves change color in autumn?",
+     '{"trigger": "falling leaves", "phobia": "phyllophobia", "fear_level": 4, "user_distressed": false}'),
     ("Latest user message: I've been feeling really alone lately and I don't know what to do.",
      '{"trigger": "loneliness", "phobia": "monophobia", "fear_level": 3, "user_distressed": true}'),
 ]
 
 SUMMARIZER_PROMPT = """You maintain the long-term memory note of Phoebe, a chatbot.
-Merge the existing memory note with the older conversation turns you are given into ONE updated note.
-Keep: facts the user shared about themselves (name, preferences, goals), the topics discussed, answers or numbers that may be referred to later, and anything Phoebe promised.
-Drop: jokes, panic, and filler. Write at most 8 short bullet points, in the third person ("The user...")."""
+Merge the existing memory note with the older conversation turns you are given into ONE updated note, in exactly this format:
+User facts: <everything the user said about themselves: name, pets, preferences, goals; or "none yet">
+Topics so far:
+- <topic>: <the key answer, number or advice Phoebe gave>
+Rules: at most 5 topic lines and under 90 words in total. Never drop a user fact from the existing note. Leave out jokes, panic, Phoebe's feelings and filler. Refer to the user as "the user" or by their name, never as "he" or "she"."""
 
 
 def pairs_to_messages(pairs):
@@ -455,8 +466,9 @@ def build_messages(mem, user_msg, scan, reasoning):
     system_parts = [PERSONA_SYSTEM_PROMPT,
                     REASONING_MODE_INSTRUCTIONS if reasoning else CHAT_MODE_INSTRUCTIONS]
     if mem.summary:
-        system_parts.append("MEMORY NOTE (summary of the earlier conversation that no longer fits "
-                            f"in your context):\n{mem.summary}")
+        system_parts.append("MEMORY NOTE: what you remember from earlier in this conversation (those messages "
+                            "no longer fit in your context). Treat it as things you know for sure, and use it "
+                            f"whenever the user refers back to something said earlier:\n{mem.summary}")
     scan_json = json.dumps({k: scan[k] for k in DEFAULT_SCAN})
     system_parts.append(f"FEAR SCAN of the user's latest message (from your internal fear scanner):\n{scan_json}")
     if scan["user_distressed"]:
@@ -492,6 +504,8 @@ def phoebe_reply_stream(user_msg, mem, reasoning=False, deterministic=False):
     t0 = time.time()
     st["scan"] = fear_scan(user_msg, mem)                          # chain step 1
     st["scan_seconds"] = time.time() - t0
+    st["stage"] = "scanned"
+    yield st
 
     if needs_summary(mem):
         st["stage"] = "summarizing"
@@ -589,37 +603,62 @@ print("\nPHOEBE'S LAST REPLY:\n" + st["answer"])
 
 # %% [markdown]
 # ## §10 · Bonus: Reasoning Mode, before vs after
-# The same prompts, run with Reasoning Mode **off** (quick answer) and **on** (chain-of-thought inside
-# `<worry>` tags). Both use greedy decoding so the comparison is reproducible. Correct answers:
+# The same multi-step puzzles, run with Reasoning Mode **off** and **on**:
+# - **OFF (quick answer):** for puzzles, Phoebe answers immediately without showing any working, i.e.
+#   plain prompting with no chain-of-thought.
+# - **ON (chain-of-thought):** she first writes numbered steps inside `<worry>` tags, then answers.
 #
-# | # | Puzzle | Correct answer |
-# |---|---|---|
-# | 1 | Sally's sisters | **1** (Sally herself is one of the 2 sisters) |
-# | 2 | Pencils & erasers | **4** erasers (24 pencils = $6.00; change $4.00; half = $2.00; $2.00 / $0.50 = 4) |
-# | 3 | Machines & widgets | **5 minutes** (each machine makes 1 widget in 5 minutes) |
-# | 4 | Lily pads | **47 days** (the patch doubles daily, so it was half-covered one day before day 48) |
+# Both modes use greedy decoding, so the comparison is reproducible. Each final answer is checked
+# automatically against the correct one (✅/❌), and a summary table is printed at the end.
 
 # %%
 from IPython.display import Markdown, display
 
-DEMO_PROMPTS = [
-    "Sally has 3 brothers. Each of her brothers has 2 sisters. How many sisters does Sally have?",
-    "A shop sells pencils at 3 for $0.75. Tom buys two dozen pencils and pays with a $10 bill. "
-    "He spends half of his change on erasers that cost $0.50 each. How many erasers does he buy?",
-    "If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets?",
-    "In a lake there is a patch of lily pads. Every day the patch doubles in size. If it takes 48 days "
-    "for the patch to cover the entire lake, how many days does it take to cover half of the lake?",
+# (prompt, correct answer, regex that matches a correct final answer)
+DEMOS = [
+    ("What is 23 × 47 − 18 × 19?",
+     "739 (1081 − 342)", r"\b739\b"),
+    ("How many days are there from March 3 to May 17 of the same non-leap year "
+     "(count May 17 but not March 3)?",
+     "75 days (28 in March + 30 in April + 17 in May)", r"\b75\b"),
+    ("Anna is twice as old as Ben was when Anna was as old as Ben is now. Ben is 18. How old is Anna?",
+     "24 (then Anna was 18 and Ben was 12; the age gap is 6)", r"\b24\b"),
+    ("A farmer has chickens and cows. There are 30 heads and 74 legs in total. How many cows are there?",
+     "7 cows (23 chickens × 2 + 7 cows × 4 = 74 legs)", r"\b(7|seven)\b"),
+    ("A shop sells pencils at 3 for $0.75. Tom buys two dozen pencils and pays with a $10 bill. "
+     "He spends half of his change on erasers that cost $0.50 each. How many erasers does he buy?",
+     "4 erasers", r"\b(4|four)\s+erasers\b"),
 ]
 
-for i, prompt in enumerate(DEMO_PROMPTS, 1):
+
+def md_safe(text):
+    return text.replace("$", r"\$")  # keep prices from being rendered as LaTeX math
+
+
+def is_correct(answer, pattern):
+    """Grade the bolded final answer (Phoebe bolds key facts); fall back to the whole reply."""
+    bold = " ".join(re.findall(r"\*\*(.+?)\*\*", answer))
+    return bool(re.search(pattern, bold or answer, re.I))
+
+
+rows = []
+for i, (prompt, correct, pattern) in enumerate(DEMOS, 1):
     off = ask(prompt, reasoning=False)
     on = ask(prompt, reasoning=True)
-    display(Markdown(
-        f"### Demo {i}\n> {prompt}\n\n"
-        f"**🔴 Reasoning Mode OFF**\n\n{off['answer']}\n\n"
+    off_ok, on_ok = is_correct(off["answer"], pattern), is_correct(on["answer"], pattern)
+    rows.append((i, prompt, correct, off_ok, on_ok))
+    display(Markdown(md_safe(
+        f"### Demo {i}\n> {prompt}\n\n**Correct answer:** {correct}\n\n"
+        f"**🔴 Reasoning Mode OFF** {'✅' if off_ok else '❌'}\n\n{off['answer']}\n\n"
         f"**🟢 Reasoning Mode ON: 📓 panic journal (reasoning trace)**\n\n```text\n{on['worry']}\n```\n\n"
-        f"**🟢 Reasoning Mode ON: final answer**\n\n{on['answer']}\n\n---"
-    ))
+        f"**🟢 Reasoning Mode ON: final answer** {'✅' if on_ok else '❌'}\n\n{on['answer']}\n\n---"
+    )))
+
+summary = "| # | Puzzle | Correct | Reasoning OFF | Reasoning ON |\n|---|---|---|---|---|\n"
+for i, prompt, correct, off_ok, on_ok in rows:
+    short = prompt if len(prompt) < 70 else prompt[:67] + "..."
+    summary += f"| {i} | {short} | {correct} | {'✅' if off_ok else '❌'} | {'✅' if on_ok else '❌'} |\n"
+display(Markdown("### Summary\n" + md_safe(summary)))
 
 # %% [markdown]
 # ## §11 · The web UI (Gradio)
@@ -698,9 +737,10 @@ def render_assistant(st, reasoning):
                                  "duration": round(st["scan_seconds"], 1), "status": "done"}})
     if reasoning and (st["worry"] or st["stage"] == "answering"):
         writing = not st["answer"] and not st["done"]
-        out.append({"role": "assistant", "content": st["worry"] or "...",
-                    "metadata": {"title": "📓 Phoebe's panic journal (step-by-step reasoning)",
-                                 "status": "pending" if writing else "done"}})
+        journal = {"title": "📓 Phoebe's panic journal (step-by-step reasoning)"}
+        if writing:  # spinner while thinking; without a "done" status the panel stays open afterwards
+            journal["status"] = "pending"
+        out.append({"role": "assistant", "content": st["worry"] or "...", "metadata": journal})
     if st["answer"]:
         out.append({"role": "assistant", "content": st["answer"]})
     elif st["stage"] == "summarizing":
@@ -718,15 +758,18 @@ def respond(user_msg, chat, mem, reasoning, budget):
     chat = chat + [{"role": "user", "content": user_msg}]
     for st in phoebe_reply_stream(user_msg, mem, reasoning):
         view = chat + render_assistant(st, reasoning)
+        # Side panels are only re-rendered when they change, so the fear meter's shake plays once
+        # instead of restarting on every streamed token.
+        fear, memory, prompt = gr.update(), gr.update(), gr.update()
         if st["stage"] == "scanning":
-            yield "", view, mem, fear_panel(stage="scanning"), gr.update(), gr.update()
+            fear = fear_panel(stage="scanning")
+        elif st["stage"] == "scanned":
+            fear = fear_panel(st["scan"])
+        elif st["stage"] == "summarizing":
+            memory = memory_panel(mem)
         elif st["done"]:
-            yield "", view, mem, gr.update(), memory_panel(mem), mem.last_prompt_text
-        elif st["stage"] == "answering" and (st["answer"] or st["worry"]):
-            # Leave the side panels untouched while streaming so the fear meter doesn't re-animate every token.
-            yield "", view, mem, gr.update(), gr.update(), gr.update()
-        else:
-            yield "", view, mem, fear_panel(st["scan"]), memory_panel(mem), gr.update()
+            memory, prompt = memory_panel(mem), mem.last_prompt_text
+        yield "", view, mem, fear, memory, prompt
 
 
 def reset():
@@ -737,7 +780,7 @@ def reset():
 THEME = gr.themes.Soft(
     primary_hue="violet", secondary_hue="pink", neutral_hue="slate",
     font=[gr.themes.GoogleFont("Nunito"), "ui-sans-serif", "system-ui", "sans-serif"],
-)
+).set(block_radius="18px", input_radius="12px", button_large_radius="14px", button_small_radius="12px")
 
 CSS = """
 .gradio-container { max-width: 1180px !important; margin: auto; }
@@ -766,12 +809,19 @@ CSS = """
   0% { content: "spiders"; } 12% { content: "soup"; } 25% { content: "numbers"; } 37% { content: "Tuesdays"; }
   50% { content: "the ocean"; } 62% { content: "the letter Q"; } 75% { content: "pigeons"; } 87% { content: "everything"; } }
 
-#chatbot .message.user, #chatbot [data-testid="user"] {
-  background: rgba(52,211,153,.14) !important; border: 1px solid rgba(52,211,153,.4) !important;
-  border-radius: 18px 18px 4px 18px !important; }
-#chatbot .message.bot, #chatbot [data-testid="bot"] {
-  background: rgba(167,139,250,.13) !important; border: 1px solid rgba(167,139,250,.38) !important;
-  border-radius: 18px 18px 18px 4px !important; }
+/* Chat bubbles: style only the outer bubble (.message-row > ... > .user/.bot.message) */
+#chatbot .message-row .user.message {
+  background: rgba(52,211,153,.14) !important; border: 1px solid rgba(52,211,153,.45) !important;
+  border-radius: 18px 18px 4px 18px !important; padding: 10px 16px !important; box-shadow: none !important; }
+#chatbot .message-row .bot.message {
+  background: rgba(167,139,250,.10) !important; border: 1px solid rgba(167,139,250,.38) !important;
+  border-radius: 18px 18px 18px 4px !important; padding: 12px 18px !important; box-shadow: none !important; }
+#chatbot .thought-group {
+  background: rgba(244,114,182,.07) !important; border: 1px dashed rgba(244,114,182,.55) !important;
+  border-radius: 12px !important; padding: 4px 12px !important; margin: 2px 0 12px !important; }
+#chatbot .prose ul, #chatbot .prose ol { padding-left: 1.4em !important; }
+#chatbot .prose ul { list-style: disc !important; }
+#chatbot .prose p:first-child { margin-top: 0; }
 
 .fear-card { display: flex; gap: 14px; align-items: center; padding: 16px; border-radius: 18px;
   background: var(--block-background-fill); border: 1px solid rgba(244,114,182,.4); }
@@ -801,11 +851,25 @@ CSS = """
 .mem-card details { margin-top: 6px; } .mem-card summary { cursor: pointer; font-weight: 700; }
 .mem-note { white-space: pre-wrap; font-size: .82rem; opacity: .85; margin-top: 6px; }
 
+/* Side panel: one column of cards with identical spacing */
+#side { gap: 14px; }
+#reasoning-toggle { border: 1px solid rgba(167,139,250,.45) !important;
+  background: linear-gradient(135deg, rgba(167,139,250,.14), rgba(244,114,182,.08)) !important; }
+#reasoning-toggle label span { font-weight: 800; }
+#composer { align-items: stretch; }
+#composer textarea { border: 1px solid rgba(167,139,250,.5) !important; border-radius: 14px !important;
+  background: var(--input-background-fill) !important; overflow-y: auto !important; scrollbar-width: none; }
 #send-btn { min-width: 110px; }
 @media (max-width: 640px) {
-  #phoebe-header { padding: 14px; gap: 12px; }
-  #phoebe-header .avatar { font-size: 42px; }
-  #phoebe-header h1 { font-size: 1.4rem; } }
+  .contain { margin-inline: -20px; }  /* reclaim most of Gradio's 32px page gutter on phones */
+  #phoebe-header { padding: 14px; gap: 12px; align-items: flex-start; }
+  #phoebe-header .avatar { font-size: 40px; }
+  #phoebe-header h1 { font-size: 1.4rem; }
+  .chips span { font-size: .72rem; padding: 2px 8px; }
+  #chatbot .avatar-container { display: none !important; }
+  #chatbot .message-row { margin: 8px 6px !important; max-width: 100% !important; }
+  #chatbot .message-row .bot.message, #chatbot .message-row .user.message { max-width: 100% !important; }
+  #send-btn { min-width: 92px; white-space: nowrap; } }
 @media (prefers-reduced-motion: reduce) { *, *::after { animation: none !important; transition: none !important; } }
 """
 
@@ -826,8 +890,9 @@ EXAMPLES = [
     "How do airplanes stay in the air?",
     "What's an easy recipe for tomato soup?",
     "Give me 3 tips for a job interview.",
-    "Sally has 3 brothers. Each of her brothers has 2 sisters. How many sisters does Sally have?",
-    "If 5 machines make 5 widgets in 5 minutes, how long do 100 machines take to make 100 widgets?",
+    "If today is Wednesday, what day of the week will it be 100 days from now?",
+    "A shop sells pencils at 3 for $0.75. Tom buys two dozen pencils and pays with a $10 bill. "
+    "He spends half of his change on erasers that cost $0.50 each. How many erasers does he buy?",
 ]
 
 with gr.Blocks(theme=THEME, css=CSS, title="Phoebe: afraid of everything") as demo:
@@ -837,29 +902,30 @@ with gr.Blocks(theme=THEME, css=CSS, title="Phoebe: afraid of everything") as de
         with gr.Column(scale=3, min_width=320):
             chatbot = gr.Chatbot(
                 type="messages", elem_id="chatbot", height=560, show_copy_button=True,
-                avatar_images=(None, AVATAR_PATH), label="Chat with Phoebe",
+                latex_delimiters=[],  # prices like "$0.75 ... $10" must not be rendered as math
+                avatar_images=(None, AVATAR_PATH), show_label=False,
                 placeholder="### 🫣 Phoebe is hiding under a blanket.\nSay something... *gently*.",
             )
-            with gr.Row():
-                user_box = gr.Textbox(placeholder="Tell Phoebe something... gently.", show_label=False,
-                                      scale=5, autofocus=True, max_lines=6)
+            with gr.Row(elem_id="composer"):
+                user_box = gr.Textbox(placeholder="Say something... gently.", show_label=False,
+                                      scale=5, autofocus=True, max_lines=6, container=False)
                 send_btn = gr.Button("Send 🫣", variant="primary", scale=1, elem_id="send-btn")
             gr.Examples(EXAMPLES, inputs=user_box, label="Try one of these (the puzzles are great with Reasoning Mode)")
-        with gr.Column(scale=1, min_width=280):
+        with gr.Column(scale=1, min_width=280, elem_id="side"):
             reasoning_toggle = gr.Checkbox(
-                label="📓 Reasoning Mode (overthink it step by step)", value=False,
-                info="Phoebe writes out her nervous step-by-step reasoning before answering.",
+                label="📓 Reasoning Mode", value=False, elem_id="reasoning-toggle",
+                info="Phoebe nervously overthinks step by step before answering.",
             )
-            fear_html = gr.HTML(fear_panel())
-            memory_html = gr.HTML(memory_panel(Memory()))
+            fear_html = gr.HTML(fear_panel(), container=False, padding=False)
+            memory_html = gr.HTML(memory_panel(Memory()), container=False, padding=False)
             with gr.Accordion("🧪 Context lab", open=False):
                 budget_slider = gr.Slider(256, 8192, value=HISTORY_TOKEN_BUDGET, step=128,
                                           label="History budget (tokens)",
                                           info="Lower it (e.g. 512) to watch summarization kick in after a few messages.")
-            with gr.Accordion("🔬 Prompt inspector (last prompt sent to the model)", open=False):
-                prompt_box = gr.Textbox(lines=14, max_lines=30, show_label=False, show_copy_button=True,
-                                        interactive=False)
-            clear_btn = gr.Button("🧹 Start over (clear chat and memory)")
+            with gr.Accordion("🔬 Prompt inspector", open=False):
+                prompt_box = gr.Textbox(lines=12, max_lines=30, show_label=False, show_copy_button=True,
+                                        interactive=False, placeholder="Send a message to see the exact prompt.")
+            clear_btn = gr.Button("🧹 Start over", variant="secondary", size="sm")
 
     inputs = [user_box, chatbot, memory_state, reasoning_toggle, budget_slider]
     outputs = [user_box, chatbot, memory_state, fear_html, memory_html, prompt_box]

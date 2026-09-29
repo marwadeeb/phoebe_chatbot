@@ -47,7 +47,7 @@ step-by-step "overthinking" in a separate panel before her final answer.
 | State the context window size and what happens near the limit | **32,768 tokens**; step-by-step behavior explained, with a live memory gauge in the UI | §9 |
 | Show how system and user prompts enforce the persona and trigger the techniques | Full prompt anatomy, plus a *Prompt inspector* in both the notebook (§8) and the UI | §8 |
 | README with setup, model details, usage examples | This file | §2, §3, §5, §11 |
-| **Bonus:** Reasoning Mode toggle, CoT, reasoning shown separately, ≥2 before/after demos | Toggle in the UI; collapsible "📓 panic journal" panel; 4 demo prompts in notebook §10 | §10 |
+| **Bonus:** Reasoning Mode toggle, CoT, reasoning shown separately, ≥2 before/after demos | Toggle in the UI; collapsible "📓 panic journal" panel; 5 auto-graded demo puzzles in notebook §10 | §10 |
 
 ---
 
@@ -75,7 +75,7 @@ You need only a Google account; nothing is installed on your computer.
 You need an **NVIDIA GPU with at least 8 GB of memory** and an up-to-date NVIDIA driver. The app was
 developed on Windows 11 with an RTX 5070 Laptop GPU (8 GB).
 
-1. **Install Python 3.12** from <https://www.python.org/downloads/>. On Windows, tick **"Add python.exe to PATH"** in the installer.
+1. **Install Python 3.12 or newer** (tested with 3.14) from <https://www.python.org/downloads/>. On Windows, tick **"Add python.exe to PATH"** in the installer.
 2. **Download this project.** Either click **Code → Download ZIP** on GitHub and unzip it, or run:
    ```bash
    git clone https://github.com/marwadeeb/phoebe_chatbot.git
@@ -109,8 +109,8 @@ developed on Windows 11 with an RTX 5070 Laptop GPU (8 GB).
 | Area | What it does |
 |---|---|
 | **Header** | A trembling Phoebe, and a tagline that cycles through her fears ("afraid of *spiders*... *soup*... *numbers*..."). |
-| **Chat** (left) | Type in the box and press **Enter** or **Send 🫣**. Your messages appear in green on the right; Phoebe's appear in purple on the left, next to her avatar. Replies stream in word by word. The history scrolls, and each message has a copy button. |
-| **Collapsible panels in the chat** | **😱 Fear scan (chain step 1)** shows the JSON produced by the first model call. **📓 Phoebe's panic journal** shows the Reasoning Mode trace. **🧠 Context manager** appears when old messages are summarized or dropped. |
+| **Chat** (left) | Type in the box and press **Enter** or **Send 🫣**. Your messages appear in green bubbles on the right; Phoebe's appear in purple bubbles on the left, next to her avatar. Replies stream in word by word. The history scrolls, and each message has a copy button. |
+| **Panels inside Phoebe's bubble** (dashed pink boxes) | **😱 Fear scan (chain step 1)** is collapsed and shows the JSON produced by the first model call; click to expand. **📓 Phoebe's panic journal** is the Reasoning Mode trace; it shows a spinner while she thinks and stays open afterwards. **🧠 Context manager** appears when old messages are summarized or dropped. |
 | **📓 Reasoning Mode** (right) | Toggle it on to make Phoebe think step by step before answering (§10). |
 | **Fear meter** (right) | Phobia name, trigger, and a 0–10 meter that updates on every message. It shakes at 7/10 or higher. |
 | **🧠 Phoebe's memory** (right) | Live gauge of history tokens against the budget (the pink tick marks the 75% summarization threshold), the size of the last prompt against the 32,768-token window, counters for summaries and dropped messages, and the current memory note. |
@@ -119,8 +119,10 @@ developed on Windows 11 with an RTX 5070 Laptop GPU (8 GB).
 | **🧹 Start over** | Clears the chat and Phoebe's memory. |
 | **Examples** | One-click example prompts, including logic puzzles for trying Reasoning Mode. |
 
-On a phone, the side panel moves below the chat, and all animations are turned off for users whose
-device is set to *reduce motion*.
+On a phone, the side panel moves below the chat, the bubbles widen to use the full screen width, and
+the avatar is hidden to save space. All animations are turned off for users whose device is set to
+*reduce motion*. Prices such as "$0.75" are shown as plain text; LaTeX rendering is disabled so
+dollar signs are not mistaken for math.
 
 ---
 
@@ -135,6 +137,7 @@ device is set to *reduce motion*.
 | **How it is hosted** | Locally on the runtime's GPU, via Hugging Face `transformers` |
 | **Quantization** | 4-bit NF4 with double quantization (`bitsandbytes`): ~15 GB of weights become **~5.5 GB of GPU memory** |
 | **Precision** | float16 compute on a T4; bfloat16 on newer GPUs (chosen automatically) |
+| **Tested on** | Google Colab T4, and locally on an RTX 5070 Laptop GPU (8 GB, Windows 11, PyTorch 2.11 + CUDA 12.8): the model loads in ~15–25 s from cache, the fear scan takes ~2–4 s, and answers stream immediately afterwards |
 | **Decoding** | Chat: temperature 0.7, top-p 0.9. Reasoning Mode: temperature 0.3. Internal steps and demos: greedy (deterministic) |
 
 **Why this model?**
@@ -158,7 +161,7 @@ It is implemented in four layers:
 | Layer | Implementation |
 |---|---|
 | **System prompt** | `PERSONA_SYSTEM_PROMPT` defines the character, the three-part reply structure, and hard rules: *correctness beats comedy*, never refuse because of fear, at most two sentences of drama, never mock real anxiety disorders or the user. |
-| **Few-shot examples** | Three example exchanges (boiling eggs, capital of Australia, Python tips) demonstrate the voice and structure. |
+| **Few-shot examples** | Four example exchanges (boiling eggs, capital of Australia, a quick muffin-price puzzle, Python tips) demonstrate the voice and structure, including how a *quick* answer to a puzzle looks. |
 | **Fear scan (prompt chain)** | Before each answer, a separate model call decides *what* scares Phoebe and *how much*. The answer prompt receives that JSON, so her panic is specific and proportional ("arachnophobia, 9/10" vs "ovophobia, 6/10"), and the UI's fear meter shows it. |
 | **Gentle mode (responsible design)** | The fear scan also flags whether the *user* seems genuinely upset. If so, `GENTLE_MODE_INSTRUCTIONS` switch the comedy off for that reply: Phoebe answers warmly and, if there is any sign of danger, points to trusted people or crisis services. The joke never lands on someone who is struggling. |
 
@@ -171,7 +174,7 @@ The UI carries the persona too: the trembling avatar, the cycling list of fears,
 
 | # | Technique | Where in the code | Why we used it | Where you can *see* it |
 |---|---|---|---|---|
-| 1 | **Few-shot prompting** | `FEW_SHOT_CHAT`, `FEW_SHOT_REASONING`, `FEW_SHOT_SCAN` | A persona described only in words drifts back to a generic assistant voice after a few turns. Showing 2–3 concrete examples locks in the tone, the three-part structure, the phobia-naming habit, and (for the scan) the exact JSON shape. It made the persona noticeably more consistent. | Prompt inspector (UI and notebook §8) |
+| 1 | **Few-shot prompting** | `FEW_SHOT_CHAT`, `FEW_SHOT_REASONING`, `FEW_SHOT_SCAN` | A persona described only in words drifts back to a generic assistant voice after a few turns. Showing 2–4 concrete examples locks in the tone, the three-part structure, the phobia-naming habit, and (for the scan) the exact JSON shape. It made the persona noticeably more consistent. | Prompt inspector (UI and notebook §8) |
 | 2 | **Prompt chaining** | `fear_scan()` → `build_messages()` in `phoebe_reply_stream()` | Splitting "decide what is scary" from "write the answer" gives each call one simple job. Step 1 is deterministic and outputs structured data (trigger, phobia, fear level, distress flag). Step 2 uses it to scale Phoebe's panic, switch on gentle mode, and drive the UI's fear meter. A single prompt was less consistent about naming a phobia and had no machine-readable output for the UI. The context summarizer is a third chained call. | "😱 Fear scan (chain step 1)" panel under every message, and the fear meter |
 | 3 | **Chain-of-thought** (bonus Reasoning Mode) | `REASONING_MODE_INSTRUCTIONS`, `split_reasoning()` | Multi-step problems and trick questions go wrong when the model answers immediately. Asking for numbered steps *before* the answer, including an explicit "double-check / look for tricks" step, improves correctness. Framed as Phoebe's anxious overthinking, it also fits the persona. | "📓 Phoebe's panic journal" panel, and demos in notebook §10 |
 | 4 | **Zero-shot instruction** | `SUMMARIZER_PROMPT` | Summarizing old turns is a standard task the model does well without examples, so we kept that prompt short to save tokens. | Memory note in the "🧠 Phoebe's memory" panel |
@@ -184,7 +187,7 @@ The UI carries the persona too: the trembling avatar, the cycling list of fears,
 ```
 [SYSTEM]    FEAR_SCAN_PROMPT: "reply with ONLY one JSON object with keys trigger, phobia, fear_level, user_distressed"
 [USER]      "Latest user message: Can you explain how spiders make their webs?"           ┐
-[ASSISTANT] {"trigger": "spiders", "phobia": "arachnophobia", "fear_level": 9, ...}       ├ few-shot (3 pairs)
+[ASSISTANT] {"trigger": "spiders", "phobia": "arachnophobia", "fear_level": 9, ...}       ├ few-shot (4 pairs)
 ...                                                                                        ┘
 [USER]      "(Phoebe's previous reply, for context: ...)  Latest user message: <your message>"
 ```
@@ -227,7 +230,7 @@ Before every reply, `manage_context()` applies these rules in order:
 | History size | What happens |
 |---|---|
 | **Below 75% of the budget** | All past messages are sent word-for-word. |
-| **Above 75%** | **Summarization.** Everything except the last 2 exchanges is folded by the model (a chained, zero-shot call) into a ≤8-bullet **memory note**: the user's name, preferences, topics, important answers. The note goes into the system prompt. Phoebe still "remembers" early details at a fraction of the tokens. A "🧠 Context manager" panel appears in the chat, and the counters update. |
+| **Above 75%** | **Summarization.** Everything except the last 2 exchanges is folded by the model (a chained, zero-shot call) into a structured **memory note** (a "User facts:" line plus up to 5 "topic: key answer" lines, under 90 words). The note goes into the system prompt. Phoebe still "remembers" early details at a fraction of the tokens. A "🧠 Context manager" panel appears in the chat, and the counters update. |
 | **Still above 100%** (e.g. very long recent messages) | **Dropping.** The oldest messages are removed one at a time until history fits. The memory note is capped at half the budget. |
 | **A single message over 1,024 tokens** | **Truncation.** The message is cut to 1,024 tokens, with a visible note. |
 | **Hard safety net** | The reply length is capped at `32,768 − prompt tokens`, so prompt + reply can **never** exceed the window. |
@@ -249,37 +252,72 @@ Turn on **📓 Reasoning Mode** in the side panel, and three things change:
 
 ### Demonstration: Reasoning Mode off vs on
 
-Notebook §10 runs four classic multi-step and trick puzzles in both modes, with greedy decoding so the results are reproducible:
+Notebook §10 runs multi-step puzzles in both modes.
+- **OFF** means a quick answer: for puzzles, Phoebe answers immediately without showing any working (plain prompting, no chain-of-thought).
+- **ON** means she first writes numbered steps, then answers.
+- Both use greedy decoding, so the results are reproducible.
+- Every final answer is graded automatically against the correct answer (✅/❌), and a summary table is printed.
 
-| # | Prompt (short) | Correct | Reasoning **OFF** | Reasoning **ON** |
+**Results** (Qwen2.5-7B-Instruct, 4-bit, greedy decoding; saved in the notebook outputs):
+
+| # | Puzzle | Correct | Reasoning **OFF** | Reasoning **ON** |
 |---|---|---|---|---|
-| 1 | Sally has 3 brothers; each brother has 2 sisters. How many sisters does Sally have? | 1 | *to be filled from the run* | *to be filled from the run* |
-| 2 | Pencils 3 for $0.75; buys 2 dozen with $10; half the change on $0.50 erasers. How many erasers? | 4 | *…* | *…* |
-| 3 | 5 machines make 5 widgets in 5 min. 100 machines, 100 widgets? | 5 min | *…* | *…* |
-| 4 | Lily pads double daily and cover the lake on day 48. When is it half covered? | 47 | *…* | *…* |
+| 1 | What is 23 × 47 − 18 × 19? | 739 | ❌ **755** (1081 − 342 miscalculated) | ✅ **739** |
+| 2 | How many days from March 3 to May 17 (non-leap year, count May 17, not March 3)? | 75 | ❌ **74** (counted 27 days left in March) | ✅ **75** |
+| 3 | Anna is twice as old as Ben was when Anna was as old as Ben is now. Ben is 18. How old is Anna? | 24 | ❌ **36** | ✅ **24** |
+| 4 | Chickens and cows: 30 heads, 74 legs. How many cows? | 7 | ❌ **12** | ✅ **7** |
+| 5 | Pencils 3 for $0.75; buys 2 dozen with a $10 bill; half the change on $0.50 erasers. How many erasers? | 4 | ✅ **4** | ✅ **4** |
 
-<!-- TODO: fill this table (and add 2 short quoted examples) from the saved outputs of notebook §10. -->
+**Reasoning Mode fixed 4 of the 5 answers.** Two of them in detail:
+
+> **Demo 3 (age riddle), OFF:** *"A-age problems?! I can't handle this... 😱 … Since Anna was 18 at some point, and now she is twice as old as that, she is 36."* ❌ It misread the riddle.
+>
+> **ON, 📓 panic journal:** *"Step 4: Let's say that happened x years ago. So, Anna was 18, and Ben was 18 - x. … Step 7: 18 + x = 2(18 - x) … Step 10: x = 6. Step 11: … her current age 18 + 6 = 24."*
+> **Final answer:** *"Anna is **24 years old**. When Anna was 18, Ben was 12…"* ✅
+
+> **Demo 2 (date counting), OFF:** *"March: 27 days (from March 3 to March 31) … **27 + 30 + 17 = 74 days**."* ❌ An off-by-one error; March 4–31 is 28 days.
+>
+> **ON:** the panic journal counts each month separately and double-checks the March boundary, then answers *"There are **75 days**…"* ✅
+
+**What we learned while choosing the demos.** A fair "off" baseline turned out to be the hard part:
+- Qwen2.5 likes to show its working even when told to answer immediately, so on some word problems
+  it effectively reasons in both modes. The pencil problem (#5) was solved either way in the final
+  run, although an earlier run answered **8** erasers without Reasoning Mode.
+- Famous trick questions (Sally's sisters, 5 machines/5 widgets, lily pads) were solved in both
+  modes, most likely because they are memorized.
+- Chain-of-thought is not a guarantee. In one earlier run of the 3:15 clock-angle puzzle, the
+  quick answer was right (7.5°) and the step-by-step one was wrong (82.5°): it compared the hour
+  hand with the 12 instead of with the minute hand.
+
+Reasoning Mode helps most where the model would otherwise "guess the number", as in mental
+arithmetic, counting, and algebra-style riddles. That matches what the chain-of-thought literature
+reports.
 
 ---
 
 ## 11. Usage examples
 
+These are real transcripts from the saved notebook run (lightly shortened).
+
 **Everyday question** (Reasoning Mode off)
 > **You:** How do airplanes stay in the air?
-> **Phoebe:** *(fear scan → aerophobia · 8/10)* A-airplanes?! Giant metal birds held up by *invisible air*?! 😨 …Okay. Planes fly because their wings are shaped and angled so that air flowing over them is pushed downward, which creates an upward force called **lift**… *(clear explanation of lift, thrust, drag and weight)* … Please keep your seatbelt fastened. Both of us will feel better.
+> **😱 Fear scan:** `{"trigger": "airplanes", "phobia": "aviophobia", "fear_level": 6, "user_distressed": false}`
+> **Phoebe:** A-aeroplanes?! The *sky* is so high and open... 😱 (aviophobia, 6/10)
+> Airplanes stay in the air thanks to a few key principles:
+> - **Wings:** They have a special shape called an airfoil that creates lift…
+> - **Thrust:** The engines push the plane forward…
+> - **Weight:** The plane's weight is balanced by the lift generated by the wings.
+> - **Angle of Attack:** Pilots control the angle at which the wings meet the air…
 
-**Logic puzzle** (Reasoning Mode on)
-> **You:** If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets?
-> **📓 Panic journal:** Step 1: Machines?! … each machine makes 1 widget in 5 minutes. Step 2: … 100 machines each make 1 widget in parallel … Step 3: double-check: it is NOT 100 minutes, that's the trick…
-> **Phoebe:** Mechanophobia at 7/10! 😰 It takes **5 minutes**: each machine makes one widget in 5 minutes, and all 100 work at the same time. …
+**Logic puzzle** (Reasoning Mode on): see Demo 3 in §10.
 
-**Memory across turns**
-> **You:** Hi Phoebe! My name is Sam and I have a cat called Pickles.
-> *… several messages later, after older turns were summarized …*
-> **You:** Do you remember my name and my cat's name?
-> **Phoebe:** C-cats have *claws*… 😟 Of course: you're **Sam**, and your cat is **Pickles**!
+**Memory across turns** (notebook §9, history budget shrunk to 400 tokens)
+> **Turn 1, You:** Hi Phoebe! My name is Sam and I have a cat called Pickles.
+> *Turns 2–4: a hiking snack, centipede legs, a sleep tip. At turn 4 the history passes 75% of the budget, so the oldest messages are folded into the memory note, which starts "User facts: Sam, cat named Pickles"*
+> **Turn 5, You:** Do you remember my name and my cat's name?
+> **Phoebe:** Of course! You're Sam, and your cat's name is Pickles. … 😺 *petting imaginary cat*
 
-*(The replies above are illustrative; see the saved notebook outputs for real transcripts.)*
+Turn 1 itself was no longer in the prompt at that point. Phoebe recalled the names from the memory note.
 
 ---
 
@@ -293,7 +331,8 @@ phoebe_chatbot/
 ├── notebook_src/
 │   └── Deeb_LLM_Chatbot.py       ← source of the notebook (plain Python, "# %%" cell markers)
 └── tools/
-    └── build_notebook.py         ← rebuilds the .ipynb from the source file
+    ├── build_notebook.py         ← rebuilds the .ipynb from the source file
+    └── dev_ui.py                 ← runs the app locally (add --fake for canned replies, no GPU)
 ```
 
 The notebook is developed as a plain Python file, which gives clean diffs and easy editing, and then
@@ -321,7 +360,10 @@ Notebook sections: §1 install · §2 config · §3 model loading and generation
 
 ## 14. Limitations
 
-- A 7B model can still make mistakes, including in Reasoning Mode. Chain-of-thought improves multi-step accuracy but does not guarantee it.
+- A 7B model can still make mistakes, including in Reasoning Mode. Chain-of-thought improves multi-step accuracy but does not guarantee it (see the clock example in §10).
+- Quick mode is instructed to answer puzzles without showing working, but Qwen2.5 sometimes works through the steps anyway. For those prompts, the off/on difference is smaller.
+- In Reasoning Mode, Phoebe sometimes uses a different phobia name in her final answer than the one the fear scan picked (e.g. scan: *arithmophobia*, answer: *equinophobia*). The fear meter always shows the scan's value.
+- The very first message after launch is slower (a few extra seconds) while the GPU warms up.
 - Invented phobia names (e.g. "australophobia") are part of the joke and are not real medical terms.
 - One GPU serves one reply at a time (a Gradio queue with concurrency 1), so simultaneous users wait their turn.
 - The memory note is a lossy summary: fine details from very old turns may be lost once they are summarized.
