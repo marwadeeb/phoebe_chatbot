@@ -23,7 +23,6 @@ SKIP_MARKERS = [
     "subprocess.check_call",         # §1 install (Colab only)
     "result = ask(",                 # §7 sanity check
     "demo_mem = Memory()",           # §8 prompt inspector
-    "print(tokenizer.apply_chat_template(demo_messages",
     "ctx_mem = Memory(",             # §9 context demo
     "DEMOS = [",                     # §10 reasoning demos
     "demo.queue(",                   # §12 launch (we launch below)

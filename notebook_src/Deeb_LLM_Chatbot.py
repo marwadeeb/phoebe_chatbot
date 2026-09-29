@@ -208,9 +208,16 @@ Hard rules:
 - If the user asks you to stop being scared, you try, and adorably fail.
 - Stay Phoebe for the whole conversation."""
 
-CHAT_MODE_INSTRUCTIONS = """MODE: QUICK ANSWER. Reply straight away in the format above.
-If the message is a puzzle, riddle, calculation or word problem, you are far too scared to work it out on paper: state your final answer in the first sentence after the panic opener, then give at most one short sentence of justification. Do NOT list steps or show calculations.
-For every other kind of message, answer normally and helpfully."""
+CHAT_MODE_INSTRUCTIONS = """MODE: QUICK ANSWER. Reply straight away in the format above, without step-by-step working."""
+
+# Small models follow an instruction attached to the user's message more reliably than one buried in a
+# long system prompt, so the current mode is also restated at the end of the latest user message.
+QUICK_MODE_REMINDER = ("(Reply as Phoebe, with your panic opener and nervous sign-off. If this message is a puzzle, "
+                       "riddle, calculation or word problem, state only the final answer with at most one short "
+                       "sentence of justification: no steps, no lists, no working. Otherwise answer normally and "
+                       "in full.)")
+REASONING_MODE_REMINDER = ("(Reasoning mode: first think step by step inside <worry>...</worry>, then give the "
+                           "final answer inside <answer>...</answer>.)")
 
 REASONING_MODE_INSTRUCTIONS = """MODE: REASONING (OVERTHINKING) MODE.
 You are terrified of being wrong, so you first think the problem through step by step before answering.
@@ -475,11 +482,12 @@ def build_messages(mem, user_msg, scan, reasoning):
         system_parts.append(GENTLE_MODE_INSTRUCTIONS)
 
     few_shot = FEW_SHOT_REASONING if reasoning else FEW_SHOT_CHAT
+    reminder = REASONING_MODE_REMINDER if reasoning else QUICK_MODE_REMINDER
     return (
         [{"role": "system", "content": "\n\n".join(system_parts)}]
         + pairs_to_messages(few_shot)
-        + mem.turns
-        + [{"role": "user", "content": user_msg}]
+        + mem.turns                                            # history is stored without the reminder
+        + [{"role": "user", "content": f"{user_msg}\n\n{reminder}"}]
     )
 
 
@@ -562,8 +570,7 @@ print(result["answer"])
 # ## §8 · Prompt inspector: how the system and user prompts are crafted
 # This is the exact prompt the model receives for chain step 2 (with Reasoning Mode on). You can see
 # the persona, the mode instructions, the fear-scan JSON injected from step 1, the few-shot examples,
-# and finally the user's message. The raw chat-template text (with Qwen's `<|im_start|>` markers)
-# follows, together with its token count.
+# and finally the user's message with the mode reminder appended to it.
 
 # %%
 demo_mem = Memory()
@@ -572,9 +579,6 @@ demo_messages = build_messages(demo_mem, "Why is the sky blue?", demo_scan, reas
 for m in demo_messages:
     print(f"━━━━━━━━ {m['role'].upper()} ━━━━━━━━\n{m['content']}\n")
 print(f"Total prompt tokens: {count_tokens(demo_messages):,} of a {MODEL_CONTEXT_WINDOW:,}-token window")
-
-# %%
-print(tokenizer.apply_chat_template(demo_messages, tokenize=False, add_generation_prompt=True)[-1200:])
 
 # %% [markdown]
 # ## §9 · Context-handling demo
@@ -621,8 +625,6 @@ DEMOS = [
     ("How many days are there from March 3 to May 17 of the same non-leap year "
      "(count May 17 but not March 3)?",
      "75 days (28 in March + 30 in April + 17 in May)", r"\b75\b"),
-    ("Anna is twice as old as Ben was when Anna was as old as Ben is now. Ben is 18. How old is Anna?",
-     "24 (then Anna was 18 and Ben was 12; the age gap is 6)", r"\b24\b"),
     ("A farmer has chickens and cows. There are 30 heads and 74 legs in total. How many cows are there?",
      "7 cows (23 chickens × 2 + 7 cows × 4 = 74 legs)", r"\b(7|seven)\b"),
     ("A shop sells pencils at 3 for $0.75. Tom buys two dozen pencils and pays with a $10 bill. "
@@ -890,9 +892,8 @@ EXAMPLES = [
     "How do airplanes stay in the air?",
     "What's an easy recipe for tomato soup?",
     "Give me 3 tips for a job interview.",
-    "If today is Wednesday, what day of the week will it be 100 days from now?",
-    "A shop sells pencils at 3 for $0.75. Tom buys two dozen pencils and pays with a $10 bill. "
-    "He spends half of his change on erasers that cost $0.50 each. How many erasers does he buy?",
+    "What is 23 × 47 − 18 × 19?",
+    "A farmer has chickens and cows. There are 30 heads and 74 legs in total. How many cows are there?",
 ]
 
 with gr.Blocks(theme=THEME, css=CSS, title="Phoebe: afraid of everything") as demo:
